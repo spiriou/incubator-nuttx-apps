@@ -81,7 +81,7 @@ else
 endif
 
 SRCS = $(ASRCS) $(CSRCS) $(CXXSRCS) $(MAINSRC)
-OBJS = $(AOBJS) $(COBJS) $(CXXOBJS)
+OBJS = $(AOBJS) $(COBJS) $(CXXOBJS) $(OTHER_OBJS)
 
 ifneq ($(BUILD_MODULE),y)
   OBJS += $(MAINOBJ)

@@ -1,0 +1,199 @@
+From 5b6fc199ecf184e79bb373564367128678f02cb5 Mon Sep 17 00:00:00 2001
+From: Simon Piriou <spiriou31@gmail.com>
+Date: Mon, 17 Aug 2020 20:05:55 +0200
+Subject: [PATCH] test iotjs
+
+---
+ .gitmodules                               |  4 ----
+ CMakeLists.txt                            |  2 +-
+ cmake/config/i686-nuttx.cmake             |  2 ++
+ cmake/config/x86_64-nuttx.cmake           |  2 ++
+ cmake/iotjs.cmake                         |  4 ++--
+ config/nuttx/stm32f4dis/app/iotjs_main.c  | 20 +++++++++++---------
+ deps/libtuv                               |  1 -
+ src/iotjs.c                               |  5 +++--
+ src/platform/nuttx/iotjs_systemio-nuttx.c |  5 +++++
+ tools/common_py/path.py                   |  2 +-
+ 10 files changed, 27 insertions(+), 20 deletions(-)
+ create mode 100644 cmake/config/i686-nuttx.cmake
+ create mode 100644 cmake/config/x86_64-nuttx.cmake
+ delete mode 160000 deps/libtuv
+
+diff --git a/.gitmodules b/.gitmodules
+index 6eb67de..f0cc6eb 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -6,10 +6,6 @@
+     path = deps/http-parser
+     url = https://github.com/Samsung/http-parser.git
+     ignore = untracked
+-[submodule "deps/libtuv"]
+-    path = deps/libtuv
+-    url = https://github.com/Samsung/libtuv.git
+-    ignore = untracked
+ [submodule "deps/mbedtls"]
+     path = deps/mbedtls
+     url = https://github.com/ARMmbed/mbedtls.git
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9cab35a..cfaba81 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -219,6 +219,6 @@ endif()
+ # Include external projects
+ include(cmake/jerry.cmake)
+ include(cmake/http-parser.cmake)
+-include(cmake/libtuv.cmake)
++# include(cmake/libtuv.cmake)
+ 
+ include(cmake/iotjs.cmake)
+diff --git a/cmake/config/i686-nuttx.cmake b/cmake/config/i686-nuttx.cmake
+new file mode 100644
+index 0000000..b2f4ade
+--- /dev/null
++++ b/cmake/config/i686-nuttx.cmake
+@@ -0,0 +1,2 @@
++set(CMAKE_SYSTEM_NAME Nuttx)
++set(CMAKE_SYSTEM_PROCESSOR i686)
+diff --git a/cmake/config/x86_64-nuttx.cmake b/cmake/config/x86_64-nuttx.cmake
+new file mode 100644
+index 0000000..b948a00
+--- /dev/null
++++ b/cmake/config/x86_64-nuttx.cmake
+@@ -0,0 +1,2 @@
++set(CMAKE_SYSTEM_NAME Nuttx)
++set(CMAKE_SYSTEM_PROCESSOR x86_64)
+diff --git a/cmake/iotjs.cmake b/cmake/iotjs.cmake
+index 2216f12..7ca1532 100644
+--- a/cmake/iotjs.cmake
++++ b/cmake/iotjs.cmake
+@@ -488,7 +488,7 @@ endif()
+ 
+ file(GLOB IOTJS_HEADERS "${ROOT_DIR}/src/*.h")
+ file(GLOB JERRY_HEADERS "${ROOT_DIR}/deps/jerry/jerry-core/include/*.h")
+-file(GLOB LIBUV_HEADERS "${ROOT_DIR}/deps/libtuv/include/*.h")
++# file(GLOB LIBUV_HEADERS "${ROOT_DIR}/deps/libtuv/include/*.h")
+ 
+ set(IOTJS_PUBLIC_HEADERS
+   "include/iotjs.h"
+@@ -496,8 +496,8 @@ set(IOTJS_PUBLIC_HEADERS
+   "include/node_api_types.h"
+   ${IOTJS_HEADERS}
+   ${JERRY_HEADERS}
+-  ${LIBUV_HEADERS}
+ )
++# ${LIBUV_HEADERS}
+ 
+ # Configure the libiotjs
+ set(TARGET_LIB_IOTJS libiotjs)
+diff --git a/config/nuttx/stm32f4dis/app/iotjs_main.c b/config/nuttx/stm32f4dis/app/iotjs_main.c
+index 966945e..9341906 100644
+--- a/config/nuttx/stm32f4dis/app/iotjs_main.c
++++ b/config/nuttx/stm32f4dis/app/iotjs_main.c
+@@ -53,24 +53,26 @@
+ #include <nuttx/arch.h>
+ #include <nuttx/config.h>
+ 
+-#include <stdio.h>
+-#include "setjmp.h"
++#include <uv.h>
+ 
+ /****************************************************************************
+  * Public Functions
+  ****************************************************************************/
+ 
+ extern int iotjs_entry(int argc, char *argv[]);
+-extern int tuv_cleanup(void);
+ 
+-#ifdef CONFIG_BUILD_KERNEL
++/* FIXME temporary hack, allocate libuv context here */
++
++uv_context_t g_iotjs_context;
++
+ extern int main(int argc, FAR char *argv[])
+-#else
+-extern int iotjs_main(int argc, char *argv[])
+-#endif
+ {
+-  int ret = 0;
++  int ret;
++
++  uv_library_init(&g_iotjs_context);
++
+   ret = iotjs_entry(argc, argv);
+-  tuv_cleanup();
++
++  uv_library_shutdown(&g_iotjs_context);
+   return ret;
+ }
+diff --git a/deps/libtuv b/deps/libtuv
+deleted file mode 160000
+index 8b16905..0000000
+--- a/deps/libtuv
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit 8b169052d6e658c6e8701d385b456cc6c7de876c
+diff --git a/src/iotjs.c b/src/iotjs.c
+index 1c9df6e..d05399e 100644
+--- a/src/iotjs.c
++++ b/src/iotjs.c
+@@ -116,6 +116,7 @@ static bool jerry_initialize(iotjs_environment_t* env) {
+   return true;
+ }
+ 
++extern uv_context_t g_iotjs_context;
+ 
+ bool iotjs_initialize(iotjs_environment_t* env) {
+   // Initialize JerryScript
+@@ -125,11 +126,11 @@ bool iotjs_initialize(iotjs_environment_t* env) {
+   }
+ 
+   // Set event loop.
+-  if (!uv_default_loop()) {
++  if (!uv_default_loop(&g_iotjs_context)) {
+     DLOG("iotjs uvloop init failed");
+     return false;
+   }
+-  iotjs_environment_set_loop(env, uv_default_loop());
++  iotjs_environment_set_loop(env, uv_default_loop(&g_iotjs_context));
+ 
+   // Bind environment to global object.
+   const jerry_value_t global = jerry_get_global_object();
+diff --git a/src/platform/nuttx/iotjs_systemio-nuttx.c b/src/platform/nuttx/iotjs_systemio-nuttx.c
+index 1305762..bd847d3 100644
+--- a/src/platform/nuttx/iotjs_systemio-nuttx.c
++++ b/src/platform/nuttx/iotjs_systemio-nuttx.c
+@@ -19,6 +19,9 @@
+ #include <stdint.h>
+ 
+ #include "iotjs_systemio-nuttx.h"
++
++#if ENABLE_MODULE_GPIO
++
+ #include "stm32_gpio.h"
+ 
+ 
+@@ -36,6 +39,8 @@ void iotjs_gpio_write_nuttx(uint32_t pin, bool value) {
+   stm32_gpiowrite(pin, value);
+ }
+ 
++#endif /* ENABLE_MODULE_GPIO */
++
+ 
+ #if ENABLE_MODULE_ADC
+ 
+diff --git a/tools/common_py/path.py b/tools/common_py/path.py
+index 8d4a44b..f7ef250 100644
+--- a/tools/common_py/path.py
++++ b/tools/common_py/path.py
+@@ -47,7 +47,7 @@ JERRY_ROOT = fs.join(DEPS_ROOT, 'jerry')
+ JERRY_PROFILE_ROOT = fs.join(JERRY_ROOT, 'jerry-core', 'profiles')
+ 
+ # Root directory for libtuv submodule.
+-TUV_ROOT = fs.join(DEPS_ROOT, 'libtuv')
++# TUV_ROOT = fs.join(DEPS_ROOT, 'libtuv')
+ 
+ # Root directory for http-parser submodule.
+ HTTPPARSER_ROOT = fs.join(DEPS_ROOT, 'http-parser')
+-- 
+2.17.1
+

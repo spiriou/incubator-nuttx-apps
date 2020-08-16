@@ -1,0 +1,3 @@
+ifneq ($(CONFIG_IOTJS),)
+CONFIGURED_APPS += system/iotjs
+endif
