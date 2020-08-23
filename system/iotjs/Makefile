@@ -55,9 +55,9 @@ CSRCS   += $(IOTJS_DIR)/iotjs/config/nuttx/stm32f4dis/app/jerry_port.c
 
 ifeq ($(CONFIG_ARCH_ARM),y)
 # FIXME setjmp already in NuttX
-ASRCS = $(IOTJS_DIR)/iotjs/config/nuttx/stm32f4dis/app/setjmp.S
+# ASRCS = $(IOTJS_DIR)/iotjs/config/nuttx/stm32f4dis/app/setjmp.S
 IOTJS_ARCH := arm
-IOTJS_TARGET := armv7l
+IOTJS_TARGET := arm
 else ifeq ($(CONFIG_ARCH_SIM),y)
 	ifeq ($(CONFIG_SIM_M32),y)
 	IOTJS_ARCH := x86
@@ -68,7 +68,10 @@ else ifeq ($(CONFIG_ARCH_SIM),y)
 	endif
 endif
 
-IOTJS_BUILD_PATH := $(IOTJS_DIR)/iotjs/build/$(IOTJS_TARGET)-nuttx/release/lib
+IOJS_BUILD_TYPE := debug
+# release
+
+IOTJS_BUILD_PATH := $(IOTJS_DIR)/iotjs/build/$(IOTJS_TARGET)-nuttx/$(IOJS_BUILD_TYPE)
 
 CFLAGS += -I$(IOTJS_DIR)/iotjs/deps/jerry/jerry-core/include
 CFLAGS += -I$(IOTJS_DIR)/iotjs/deps/jerry/jerry-ext/include
@@ -78,7 +81,7 @@ CFLAGS += -I$(IOTJS_DIR)/iotjs/deps/jerry/jerry-ext/include
 IOTJS_LIBS := libhttpparser.a libiotjs.a
 IOTJS_LIBS += libjerry-core.a libjerry-libm.a libjerry-ext.a
 
-IOTJS_LIBS := $(addprefix $(IOTJS_BUILD_PATH)/,$(IOTJS_LIBS))
+IOTJS_LIBS := $(addprefix $(IOTJS_BUILD_PATH)/lib/,$(IOTJS_LIBS))
 
 OTHER_OBJS := acos.c.obj                     debugger-common.c.obj  handler-print.c.obj           iotjs_module_console.c.obj      isnan.c.obj
 OTHER_OBJS += acosh.c.obj                    debugger-rp.c.obj      handler-register.c.obj        iotjs_module_constants.c.obj    jerry-all-in.c.obj
@@ -95,34 +98,39 @@ OTHER_OBJS += ceil.c.obj                     fmod.c.obj             iotjs_js.c.o
 OTHER_OBJS += copysign.c.obj                 handler-assert.c.obj   iotjs_module_buffer.c.obj     iotjs_uv_handle.c.obj           tanh.c.obj
 OTHER_OBJS += cosh.c.obj                     handler-gc.c.obj       iotjs_module.c.obj            iotjs_uv_request.c.obj          trig.c.obj
 
+OTHER_OBJS := $(addprefix build/,$(OTHER_OBJS))
+
 # FIXME dirty hack to get "ar" only without "rcs"
-AR_ONLY = $(firstword $(AR))
+AR_ONLY := $(firstword $(AR))
 
 $(IOTJS_DIR)/iotjs/.built: $(IOTJS_DIR)/iotjs
+	$(call DELDIR, $(IOTJS_DIR)/iotjs/build)
 	cd $(IOTJS_DIR)/iotjs && \
 	./tools/build.py \
 	--target-arch=$(IOTJS_ARCH) \
 	--target-os=nuttx \
 	--nuttx-home=../../../../incubator-nuttx \
-	--jerry-heaplimit=78 --buildtype=release \
+	--jerry-heaplimit=48 --buildtype=$(IOJS_BUILD_TYPE) \
 	--external-include-dir=$(APPDIR)/system/libuv/libuv-1.38.1/include
 	$(Q) touch $@
 
-# FIXME hack to build iotjs
+# FIXME build issues in iotjs. Maybe some wrong dependencies in this project build
+$(IOTJS_BUILD_PATH)/lib/%.a: $(IOTJS_DIR)/iotjs/.built
+
 %.c: $(IOTJS_DIR)/iotjs/.built
 	$(Q) touch $@
 
-%.c.obj: $(IOTJS_DIR)/iotjs/.built
-	$(foreach iotjs_lib,$(IOTJS_LIBS),$(shell $(AR_ONLY) x $(iotjs_lib)))
+build/%.c.obj: $(IOTJS_DIR)/iotjs/.built
+	$(Q) mkdir -p build/
+	$(foreach iotjs_lib,$(IOTJS_LIBS),$(shell cd build/ && $(AR_ONLY) x $(iotjs_lib)))
 
 context:: $(IOTJS_DIR)/iotjs
 
 clean::
-	$(call DELFILE, $(OBJS))
-	$(call DELFILE, $(IOTJS_LIBS))
-	$(call DELFILE, *.obj)
+	$(call DELFILE, $(OBJS) $(IOTJS_DIR)/iotjs/.built)
+	$(call DELDIR, build/)
 
-distclean::
-	$(call DELDIR, $(IOTJS_DIR)/iotjs)
+# distclean::
+# $(call DELDIR, $(IOTJS_DIR)/iotjs)
 
 include $(APPDIR)/Application.mk

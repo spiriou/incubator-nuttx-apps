@@ -116,6 +116,6 @@ clean::
 
 distclean::
 	$(call DELDIR, $(LIBUV_UNPACKDIR))
-	$(call DELFILE, $(LIBUV_DIR)/$(CONFIG_LIBUV_TARBALL))
+# $(call DELFILE, $(LIBUV_DIR)/$(CONFIG_LIBUV_TARBALL))
 
 include $(APPDIR)/Application.mk
