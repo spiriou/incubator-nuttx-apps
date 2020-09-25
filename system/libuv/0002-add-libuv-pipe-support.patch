@@ -1,0 +1,455 @@
+From 41d09ea6db87699d3626b8dcd1e916e722df5382 Mon Sep 17 00:00:00 2001
+From: spiriou <simon.piriou@korys.io>
+Date: Mon, 21 Sep 2020 14:40:06 +0200
+Subject: [PATCH 2/2] add libuv pipe support
+
+---
+ include/uv.h            |  5 ++-
+ include/uv/unix.h       |  4 ++
+ src/unix/core.c         | 18 +++++++-
+ src/unix/nuttx_stream.c |  6 ++-
+ src/unix/pipe.c         | 29 +++++++++++--
+ test/test-list.h        |  6 ++-
+ test/test-ping-pong.c   | 92 ++++++++++++++++++++++++++++++-----------
+ 7 files changed, 124 insertions(+), 36 deletions(-)
+
+diff --git a/include/uv.h b/include/uv.h
+index e4b989afb..85b1964f3 100644
+--- a/include/uv.h
++++ b/include/uv.h
+@@ -449,7 +449,6 @@ UV_EXTERN char* uv_err_name_r(int err, char* buf, size_t buflen);
+   /* read-only */                                                             \
+   uv_req_type type;                                                           \
+   /* private */                                                               \
+-  void* reserved[6];                                                          \
+   UV_REQ_PRIVATE_FIELDS                                                       \
+ 
+ /* Abstract base class of all requests. */
+@@ -830,7 +829,11 @@ struct uv_pipe_s {
+ UV_EXTERN int uv_pipe_init(uv_loop_t*, uv_pipe_t* handle, int ipc);
+ UV_EXTERN int uv_pipe_open(uv_pipe_t*, uv_file file);
+ UV_EXTERN int uv_pipe_bind(uv_pipe_t* handle, const char* name);
++#ifdef __NUTTX__
++UV_EXTERN int uv_pipe_connect(uv_connect_t* req,
++#else
+ UV_EXTERN void uv_pipe_connect(uv_connect_t* req,
++#endif
+                                uv_pipe_t* handle,
+                                const char* name,
+                                uv_connect_cb cb);
+diff --git a/include/uv/unix.h b/include/uv/unix.h
+index a98cc576f..2c56e8a55 100644
+--- a/include/uv/unix.h
++++ b/include/uv/unix.h
+@@ -473,9 +473,13 @@ typedef struct {
+ #define UV_WORK_PRIVATE_FIELDS                                                \
+   struct uv__work work_req;
+ 
++#ifdef CONFIG_LIBUV_TTY
+ #define UV_TTY_PRIVATE_FIELDS                                                 \
+   struct termios orig_termios;                                                \
+   int mode;
++#else /* CONFIG_LIBUV_TTY */
++  #define UV_TTY_PRIVATE_FIELDS
++#endif /* CONFIG_LIBUV_TTY */
+ 
+ #define UV_SIGNAL_PRIVATE_FIELDS                                              \
+   /* RB_ENTRY(uv_signal_s) tree_entry; */                                     \
+diff --git a/src/unix/core.c b/src/unix/core.c
+index eed748306..0e401abe2 100644
+--- a/src/unix/core.c
++++ b/src/unix/core.c
+@@ -138,11 +138,13 @@ void uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
+   handle->close_cb = close_cb;
+ 
+   switch (handle->type) {
+-#if 0
++#ifdef CONFIG_LIBUV_PIPE
+   case UV_NAMED_PIPE:
+     uv__pipe_close((uv_pipe_t*)handle);
+     break;
++#endif
+ 
++#if 0
+   case UV_TTY:
+     uv__stream_close((uv_stream_t*)handle);
+     break;
+@@ -337,8 +339,10 @@ static void uv__finish_close(uv_handle_t* handle) {
+       }
+       break;
+ #endif
+-#if 0
++#ifdef CONFIG_LIBUV_PIPE
+     case UV_NAMED_PIPE:
++#endif
++#if 0
+     case UV_TTY:
+ #endif
+ #ifdef CONFIG_LIBUV_TCP
+@@ -856,15 +860,25 @@ int uv_fileno(const uv_handle_t* handle, uv_os_fd_t* fd) {
+   int fd_out;
+ 
+   switch (handle->type) {
++#ifdef CONFIG_LIBUV_TCP
+   case UV_TCP:
++#endif
++#ifdef CONFIG_LIBUV_PIPE
+   case UV_NAMED_PIPE:
++#endif
++#if 0
+   case UV_TTY:
++#endif
++#if defined(CONFIG_LIBUV_PIPE) || defined(CONFIG_LIBUV_TCP)
+     fd_out = uv__stream_fd((uv_stream_t*) handle);
+     break;
++#endif
+ 
++#ifdef CONFIG_LIBUV_UDP
+   case UV_UDP:
+     fd_out = ((uv_udp_t *) handle)->io_watcher.fd;
+     break;
++#endif
+ 
+   case UV_POLL:
+     fd_out = ((uv_poll_t *) handle)->io_watcher.fd;
+diff --git a/src/unix/nuttx_stream.c b/src/unix/nuttx_stream.c
+index 85d35bc06..b9c6b8ada 100644
+--- a/src/unix/nuttx_stream.c
++++ b/src/unix/nuttx_stream.c
+@@ -220,11 +220,13 @@ int uv_accept(uv_stream_t* server, uv_stream_t* client) {
+     return UV_EAGAIN;
+ 
+   switch (client->type) {
+-#if 0
++#ifdef CONFIG_LIBUV_PIPE
+     case UV_NAMED_PIPE:
+ #endif
+ #ifdef CONFIG_LIBUV_TCP
+     case UV_TCP:
++#endif
++#if defined(CONFIG_LIBUV_PIPE) || defined(CONFIG_LIBUV_TCP)
+       err = uv__stream_open(client,
+                             server->accepted_fd,
+                             UV_HANDLE_READABLE | UV_HANDLE_WRITABLE);
+@@ -269,7 +271,7 @@ int uv_listen(uv_stream_t* stream, int backlog, uv_connection_cb cb) {
+     err = uv_tcp_listen((uv_tcp_t*)stream, backlog, cb);
+     break;
+ #endif
+-#if 0
++#ifdef CONFIG_LIBUV_PIPE
+   case UV_NAMED_PIPE:
+     err = uv_pipe_listen((uv_pipe_t*)stream, backlog, cb);
+     break;
+diff --git a/src/unix/pipe.c b/src/unix/pipe.c
+index 040d57817..292354455 100644
+--- a/src/unix/pipe.c
++++ b/src/unix/pipe.c
+@@ -169,8 +169,11 @@ int uv_pipe_open(uv_pipe_t* handle, uv_file fd) {
+   return uv__stream_open((uv_stream_t*)handle, fd, flags);
+ }
+ 
+-
++#ifdef __NUTTX__
++int uv_pipe_connect(uv_connect_t* req,
++#else
+ void uv_pipe_connect(uv_connect_t* req,
++#endif
+                     uv_pipe_t* handle,
+                     const char* name,
+                     uv_connect_cb cb) {
+@@ -198,6 +201,13 @@ void uv_pipe_connect(uv_connect_t* req,
+   }
+   while (r == -1 && errno == EINTR);
+ 
++#ifdef __NUTTX__
++  if (r < 0) {
++    /* FIXME NuttX does not support NONBLOCKING connect,
++     * no need to check for EINPROGRESS.
++     */
++    err = UV__ERR(errno);
++#else
+   if (r == -1 && errno != EINPROGRESS) {
+     err = UV__ERR(errno);
+ #if defined(__CYGWIN__) || defined(__MSYS__)
+@@ -208,6 +218,7 @@ void uv_pipe_connect(uv_connect_t* req,
+     if (err == UV_EBADF)
+       err = UV_ENOTSOCK;
+ #endif
++#endif /* __NUTTX__ */
+     goto out;
+   }
+ 
+@@ -222,7 +233,13 @@ void uv_pipe_connect(uv_connect_t* req,
+     uv__io_start(handle->loop, &handle->io_watcher, POLLOUT);
+ 
+ out:
++#ifdef __NUTTX__
++  if (err) {
++    return err;
++  }
++#else
+   handle->delayed_error = err;
++#endif
+   handle->connect_req = req;
+ 
+   uv__req_init(handle->loop, req, UV_CONNECT);
+@@ -230,10 +247,13 @@ out:
+   req->cb = cb;
+   QUEUE_INIT(&req->queue);
+ 
++#ifdef __NUTTX__
++  return 0;
++#else
+   /* Force callback to run on next tick in case of error. */
+   if (err)
+-    uv__io_feed(handle->loop, &handle->io_watcher);
+-
++    uv__stream_feed(handle->loop, (uv_stream_t*)handle);
++#endif
+ }
+ 
+ 
+@@ -290,7 +310,7 @@ int uv_pipe_getpeername(const uv_pipe_t* handle, char* buffer, size_t* size) {
+   return uv__pipe_getsockpeername(handle, getpeername, buffer, size);
+ }
+ 
+-
++#if 0
+ void uv_pipe_pending_instances(uv_pipe_t* handle, int count) {
+ }
+ 
+@@ -379,3 +399,4 @@ int uv_pipe_chmod(uv_pipe_t* handle, int mode) {
+ 
+   return r != -1 ? 0 : UV__ERR(errno);
+ }
++#endif
+diff --git a/test/test-list.h b/test/test-list.h
+index a542eeb68..edf5077cd 100644
+--- a/test/test-list.h
++++ b/test/test-list.h
+@@ -97,8 +97,10 @@ TEST_DECLARE   (ipc_send_zero)
+ TEST_DECLARE   (ipc_closed_handle)
+ #endif
+ TEST_DECLARE   (tcp_alloc_cb_fail)
++#endif
+ TEST_DECLARE   (tcp_ping_pong)
+ TEST_DECLARE   (tcp_ping_pong_vec)
++#if 0
+ TEST_DECLARE   (tcp6_ping_pong)
+ TEST_DECLARE   (tcp6_ping_pong_vec)
+ TEST_DECLARE   (pipe_ping_pong)
+@@ -642,13 +644,13 @@ TASK_LIST_START
+ #endif
+ 
+   TEST_ENTRY  (tcp_alloc_cb_fail)
+-
++#endif
+   TEST_ENTRY  (tcp_ping_pong)
+   TEST_HELPER (tcp_ping_pong, tcp4_echo_server)
+ 
+   TEST_ENTRY  (tcp_ping_pong_vec)
+   TEST_HELPER (tcp_ping_pong_vec, tcp4_echo_server)
+-
++#if 0
+   TEST_ENTRY  (tcp6_ping_pong)
+   TEST_HELPER (tcp6_ping_pong, tcp6_echo_server)
+ 
+diff --git a/test/test-ping-pong.c b/test/test-ping-pong.c
+index c86a3f4a6..50e47d6a3 100644
+--- a/test/test-ping-pong.c
++++ b/test/test-ping-pong.c
+@@ -49,7 +49,7 @@ typedef struct {
+     uv_pipe_t pipe;
+   } stream;
+   uv_connect_t connect_req;
+-  char read_buffer[BUFSIZE];
++  // char read_buffer[BUFSIZE];
+ } pinger_t;
+ 
+ 
+@@ -102,7 +102,34 @@ static void pinger_write_ping(pinger_t* pinger) {
+     FATAL("uv_write failed");
+   }
+ 
+-  puts("PING");
++  // puts("PING");
++}
++
++
++static void pinger_after_stop_write(uv_write_t *req, int status) {
++  ASSERT(status == 0);
++  pinger_t* pinger = (pinger_t*)req->data;
++  uv_close((uv_handle_t*)(&pinger->stream.tcp), pinger_on_close);
++  free(req);
++}
++
++
++static void pinger_write_stop(pinger_t* pinger) {
++  uv_write_t *req;
++  uv_buf_t bufs;
++
++  bufs.base = "QQS";
++  bufs.len = 3;
++
++  req = malloc(sizeof(*req));
++  req->data = pinger;
++  if (uv_write(req,
++               (uv_stream_t*) &pinger->stream.tcp,
++               &bufs,
++               1,
++               pinger_after_stop_write)) {
++    FATAL("uv_write failed");
++  }
+ }
+ 
+ 
+@@ -133,13 +160,13 @@ static void pinger_read_cb(uv_stream_t* stream,
+     if (pinger->state != 0)
+       continue;
+ 
+-    printf("PONG %d\n", pinger->pongs);
++    // printf("PONG %d\n", pinger->pongs);
+     pinger->pongs++;
+ 
+     if (pinger->pongs < NUM_PINGS) {
+       pinger_write_ping(pinger);
+     } else {
+-      uv_close((uv_handle_t*)(&pinger->stream.tcp), pinger_on_close);
++      pinger_write_stop(pinger);
+       break;
+     }
+   }
+@@ -164,7 +191,7 @@ static void pinger_on_connect(uv_connect_t *req, int status) {
+   uv_read_start((uv_stream_t*)(req->handle), alloc_cb, pinger_read_cb);
+ }
+ 
+-
++#if 0
+ /* same ping-pong test, but using IPv6 connection */
+ static void tcp_pinger_v6_new(int vectored_writes) {
+   int r;
+@@ -195,13 +222,16 @@ static void tcp_pinger_v6_new(int vectored_writes) {
+   /* Synchronous connect callbacks are not allowed. */
+   ASSERT(pinger_on_connect_count == 0);
+ }
++#endif
+ 
+-
+-static void tcp_pinger_new(int vectored_writes) {
++static void tcp_pinger_new(uv_context_t *ctx, int vectored_writes) {
+   int r;
+   struct sockaddr_in server_addr;
+   pinger_t *pinger;
+ 
++  pinger_on_connect_count = 0;
++  completed_pingers = 0;
++
+   ASSERT(0 == uv_ip4_addr("127.0.0.1", TEST_PORT, &server_addr));
+   pinger = malloc(sizeof(*pinger));
+   ASSERT(pinger != NULL);
+@@ -210,7 +240,7 @@ static void tcp_pinger_new(int vectored_writes) {
+   pinger->pongs = 0;
+ 
+   /* Try to connect to the server and do NUM_PINGS ping-pongs. */
+-  r = uv_tcp_init(uv_default_loop(), &pinger->stream.tcp);
++  r = uv_tcp_init(uv_default_loop(ctx), &pinger->stream.tcp);
+   pinger->stream.tcp.data = pinger;
+   ASSERT(!r);
+ 
+@@ -226,11 +256,14 @@ static void tcp_pinger_new(int vectored_writes) {
+   ASSERT(pinger_on_connect_count == 0);
+ }
+ 
+-
+-static void pipe_pinger_new(int vectored_writes) {
++#if 0
++static void pipe_pinger_new(uv_context_t *ctx, int vectored_writes) {
+   int r;
+   pinger_t *pinger;
+ 
++  pinger_on_connect_count = 0;
++  completed_pingers = 0;
++
+   pinger = (pinger_t*)malloc(sizeof(*pinger));
+   ASSERT(pinger != NULL);
+   pinger->vectored_writes = vectored_writes;
+@@ -238,7 +271,7 @@ static void pipe_pinger_new(int vectored_writes) {
+   pinger->pongs = 0;
+ 
+   /* Try to connect to the server and do NUM_PINGS ping-pongs. */
+-  r = uv_pipe_init(uv_default_loop(), &pinger->stream.pipe, 0);
++  r = uv_pipe_init(uv_default_loop(ctx), &pinger->stream.pipe, 0);
+   pinger->stream.pipe.data = pinger;
+   ASSERT(!r);
+ 
+@@ -250,29 +283,34 @@ static void pipe_pinger_new(int vectored_writes) {
+   /* Synchronous connect callbacks are not allowed. */
+   ASSERT(pinger_on_connect_count == 0);
+ }
++#endif
+ 
+-
+-static int run_ping_pong_test(void) {
+-  uv_run(uv_default_loop(), UV_RUN_DEFAULT);
++static int run_ping_pong_test(uv_context_t *ctx) {
++  uv_loop_t *loop = uv_default_loop(ctx);
++  uv_run(loop, UV_RUN_DEFAULT);
+   ASSERT(completed_pingers == 1);
+ 
+-  MAKE_VALGRIND_HAPPY();
++  MAKE_VALGRIND_HAPPY(loop);
+   return 0;
+ }
+ 
+ 
+ TEST_IMPL(tcp_ping_pong) {
+-  tcp_pinger_new(0);
+-  return run_ping_pong_test();
++  uv_context_t context;
++  uv_library_init(&context);
++  tcp_pinger_new(&context, 0);
++  return run_ping_pong_test(&context);
+ }
+ 
+ 
+ TEST_IMPL(tcp_ping_pong_vec) {
+-  tcp_pinger_new(1);
+-  return run_ping_pong_test();
++  uv_context_t context;
++  uv_library_init(&context);
++  tcp_pinger_new(&context, 1);
++  return run_ping_pong_test(&context);
+ }
+ 
+-
++#if 0
+ TEST_IMPL(tcp6_ping_pong) {
+   if (!can_ipv6())
+     RETURN_SKIP("IPv6 not supported");
+@@ -288,14 +326,18 @@ TEST_IMPL(tcp6_ping_pong_vec) {
+   return run_ping_pong_test();
+ }
+ 
+-
+ TEST_IMPL(pipe_ping_pong) {
+-  pipe_pinger_new(0);
+-  return run_ping_pong_test();
++  uv_context_t context;
++  uv_library_init(&context);
++  pipe_pinger_new(&context, 0);
++  return run_ping_pong_test(&context);
+ }
+ 
+ 
+ TEST_IMPL(pipe_ping_pong_vec) {
+-  pipe_pinger_new(1);
+-  return run_ping_pong_test();
++  uv_context_t context;
++  uv_library_init(&context);
++  pipe_pinger_new(&context, 1);
++  return run_ping_pong_test(&context);
+ }
++#endif
+-- 
+2.17.1
+
