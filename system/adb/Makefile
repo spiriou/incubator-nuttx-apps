@@ -85,6 +85,10 @@ CSRCS += $(ADB_UNPACKNAME)/shell_service.c
 CSRCS += $(ADB_UNPACKNAME)/hal/hal_uv_pipe.c
 endif
 
+ifeq ($(CONFIG_SYSTEM_ADB_LOGCAT_SERVICE),y)
+CSRCS += $(ADB_UNPACKNAME)/logcat_service.c
+endif
+
 ifeq ($(CONFIG_SYSTEM_ADB_AUTHENTICATION),y)
 CSRCS += $(ADB_UNPACKNAME)/adb_auth_key.c
 CSRCS += $(ADB_UNPACKNAME)/mincrypt/rsa.c

@@ -84,6 +84,12 @@ config SYSTEM_ADB_SHELL_SERVICE
     ---help---
         Enable "adb shell" feature.
 
+config SYSTEM_ADB_LOGCAT_SERVICE
+    bool "adb logcat support"
+    depends on RAMLOG_SYSLOG
+    default n
+    ---help---
+        Enable "adb logcat" feature.
 
 config SYSTEM_ADB_SOCKET_SERVICE
     bool "adb socket support"
