@@ -1,0 +1,88 @@
+From 914dcfdb968bb68849e059c242ea1f68e85866ad Mon Sep 17 00:00:00 2001
+From: Simon Piriou <spiriou31@gmail.com>
+Date: Wed, 30 Sep 2020 17:05:40 +0200
+Subject: [PATCH 3/3] fix config flags for uv_random() and uv_accept()
+
+---
+ src/random.c    | 38 ++++++++++++++++++++------------------
+ src/unix/core.c |  2 +-
+ 2 files changed, 21 insertions(+), 19 deletions(-)
+
+diff --git a/src/random.c b/src/random.c
+index 6b2280f02..26e45b334 100644
+--- a/src/random.c
++++ b/src/random.c
+@@ -73,7 +73,7 @@ static int uv__random(void* buf, size_t buflen) {
+   return rc;
+ }
+ 
+-
++#ifdef CONFIG_LIBUV_WQ
+ static void uv__random_work(struct uv__work* w) {
+   uv_random_t* req;
+ 
+@@ -93,7 +93,7 @@ static void uv__random_done(struct uv__work* w, int status) {
+ 
+   req->cb(req, status, req->buf, req->buflen);
+ }
+-
++#endif
+ 
+ int uv_random(uv_loop_t* loop,
+               uv_random_t* req,
+@@ -107,21 +107,23 @@ int uv_random(uv_loop_t* loop,
+   if (flags != 0)
+     return UV_EINVAL;
+ 
+-  if (cb == NULL)
+-    return uv__random(buf, buflen);
+-
+-  uv__req_init(loop, req, UV_RANDOM);
+-  req->loop = loop;
+-  req->status = 0;
+-  req->cb = cb;
+-  req->buf = buf;
+-  req->buflen = buflen;
+-
+-  uv__work_submit(loop,
+-                  &req->work_req,
+-                  UV__WORK_CPU,
+-                  uv__random_work,
+-                  uv__random_done);
++#ifdef CONFIG_LIBUV_WQ
++  if (cb != NULL) {
++    uv__req_init(loop, req, UV_RANDOM);
++    req->loop = loop;
++    req->status = 0;
++    req->cb = cb;
++    req->buf = buf;
++    req->buflen = buflen;
++
++    uv__work_submit(loop,
++                    &req->work_req,
++                    UV__WORK_CPU,
++                    uv__random_work,
++                    uv__random_done);
++    return 0;
++  }
++#endif
+ 
+-  return 0;
++  return uv__random(buf, buflen);
+ }
+diff --git a/src/unix/core.c b/src/unix/core.c
+index 0e401abe2..d74ed94dd 100644
+--- a/src/unix/core.c
++++ b/src/unix/core.c
+@@ -567,7 +567,7 @@ FILE* uv__open_file(const char* path) {
+    return fp;
+ }
+ 
+-#ifdef CONFIG_LIBUV_STREAM
++#if defined(CONFIG_LIBUV_STREAM) && defined(CONFIG_LIBUV_NET)
+ int uv__accept(int sockfd) {
+   int peerfd;
+   int err;
+-- 
+2.17.1
+

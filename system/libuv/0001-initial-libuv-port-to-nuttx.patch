@@ -1,7 +1,7 @@
 From 827725daba3b112f84ab5972a9c50021e331755f Mon Sep 17 00:00:00 2001
 From: spiriou <simon.piriou@korys.io>
 Date: Fri, 7 Aug 2020 19:48:02 +0200
-Subject: [PATCH 1/2] initial libuv port to nuttx
+Subject: [PATCH 1/3] initial libuv port to nuttx
 
 ---
  include/uv.h                        | 108 ++-
