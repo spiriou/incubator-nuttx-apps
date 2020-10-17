@@ -54,53 +54,53 @@ config SYSTEM_ADB_PRODUCT_DEVICE
 	default "NuttX device"
 
 config SYSTEM_ADB_TCP_SERVER
-    bool "Network socket transport support"
-    default n
-    ---help---
-        Run adb server on network socket
+	bool "Network socket transport support"
+	default n
+	---help---
+		Run adb server on network socket.
 
-config SYSTEM_ADB_TCP_FRAME_MAX
-    int "Network socket transport support"
-    default 1
-    ---help---
-        ADB frame pool size for TCP server
+config SYSTEM_ADB_FRAME_MAX
+	int "Frame pool size"
+	default 1
+	---help---
+		ADB frame pool size.
 
 config SYSTEM_ADB_TCP_SERVER_PORT
-    int "Network socket transport port"
-    depends on SYSTEM_ADB_TCP_SERVER
-    default 5555
-    ---help---
-        Port used by adb socket server
+	int "Network socket transport port"
+	depends on SYSTEM_ADB_TCP_SERVER
+	default 5555
+	---help---
+		Port used by adb socket server
 
 config SYSTEM_ADB_USB_SERVER
-    bool "USB transport support"
-    default n
-    ---help---
-        Run adb server on USB bus
+	bool "USB transport support"
+	default n
+	---help---
+		Run adb server on USB bus
 
 config SYSTEM_ADB_SHELL_SERVICE
-    bool "adb shell support"
-    default n
-    ---help---
-        Enable "adb shell" feature.
+	bool "adb shell support"
+	default n
+	---help---
+		Enable "adb shell" feature.
 
 config SYSTEM_ADB_LOGCAT_SERVICE
-    bool "adb logcat support"
-    depends on RAMLOG_SYSLOG
-    default n
-    ---help---
-        Enable "adb logcat" feature.
+	bool "adb logcat support"
+	depends on RAMLOG_SYSLOG
+	default n
+	---help---
+		Enable "adb logcat" feature.
 
 config SYSTEM_ADB_SOCKET_SERVICE
-    bool "adb socket support"
-    default n
-    ---help---
-        Enable "adb forward/reverse" feature.
+	bool "adb socket support"
+	default n
+	---help---
+		Enable "adb forward/reverse" feature.
 
 config SYSTEM_ADB_FILE_SERVICE
-    bool "adb file sync support"
-    default n
-    ---help---
-        Enable "adb ls/push/pull" feature.
+	bool "adb file sync support"
+	default n
+	---help---
+		Enable "adb ls/push/pull" feature.
 
 endif # SYSTEM_ADB_SERVER
