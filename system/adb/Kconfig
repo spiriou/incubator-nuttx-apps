@@ -15,19 +15,13 @@ config SYSTEM_ADB_STACKSIZE
 	int "adb stack size"
 	default 1536
 	---help---
-		The size of stack allocated for the tee task.
+		The size of stack allocated for the adb task.
 
 config SYSTEM_ADB_PRIORITY
-	int "tee priority"
+	int "adb task priority"
 	default 100
 	---help---
 		The priority of the adb task.
-
-config SYSTEM_ADB_MAX_FD
-	int "number of biggest file descriptor value handled"
-	default 64
-	---help---
-		adb allocates an array to manage all file descriptors tracked
 
 config SYSTEM_ADB_AUTHENTICATION
 	bool "adbd authentication support"
@@ -52,6 +46,10 @@ config SYSTEM_ADB_PRODUCT_MODEL
 config SYSTEM_ADB_PRODUCT_DEVICE
 	string "default adb product device"
 	default "NuttX device"
+
+config SYSTEM_ADB_FEATURES
+	string "default adb server features list"
+	default "cmd"
 
 config SYSTEM_ADB_TCP_SERVER
 	bool "Network socket transport support"
@@ -109,5 +107,12 @@ config SYSTEM_ADB_FILE_SYMLINK
 	depends on PSEUDOFS_SOFTLINKS
 	---help---
 		Enable fs symlink support.
+
+config SYSTEM_ADB_BOARD_INIT
+	bool "board init"
+	depends on LIB_BOARDCTL
+	default n
+	---help---
+		Setup board before running adb server.
 
 endif # SYSTEM_ADB_SERVER
