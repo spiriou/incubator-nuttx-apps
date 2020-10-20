@@ -71,6 +71,10 @@ ifeq ($(CONFIG_SYSTEM_ADB_TCP_SERVER),y)
 CSRCS += $(ADB_UNPACKNAME)/hal/hal_uv_client_tcp.c
 endif
 
+ifeq ($(CONFIG_SYSTEM_ADB_USB_SERVER),y)
+CSRCS += $(ADB_UNPACKNAME)/hal/hal_uv_client_usb.c
+endif
+
 ifeq ($(CONFIG_SYSTEM_ADB_FILE_SERVICE),y)
 CSRCS += $(ADB_UNPACKNAME)/file_sync_service.c
 endif

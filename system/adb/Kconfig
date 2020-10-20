@@ -103,4 +103,11 @@ config SYSTEM_ADB_FILE_SERVICE
 	---help---
 		Enable "adb ls/push/pull" feature.
 
+config SYSTEM_ADB_FILE_SYMLINK
+	bool "file service symlink support"
+	default n
+	depends on PSEUDOFS_SOFTLINKS
+	---help---
+		Enable fs symlink support.
+
 endif # SYSTEM_ADB_SERVER
