@@ -31,6 +31,7 @@ config SYSTEM_ADB_AUTHENTICATION
 
 config SYSTEM_ADB_AUTH_PUBKEY
 	bool "adbd public key authentication"
+	depends on SYSTEM_ADB_AUTHENTICATION
 	default n
 	---help---
 		Enable hook to accept new public keys.
