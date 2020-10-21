@@ -1,7 +1,7 @@
 From 41d09ea6db87699d3626b8dcd1e916e722df5382 Mon Sep 17 00:00:00 2001
 From: spiriou <simon.piriou@korys.io>
 Date: Mon, 21 Sep 2020 14:40:06 +0200
-Subject: [PATCH 2/3] add libuv pipe support
+Subject: [PATCH 2/4] add libuv pipe support
 
 ---
  include/uv.h            |  5 ++-

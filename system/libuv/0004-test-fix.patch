@@ -1,0 +1,264 @@
+From 1359d562c5799db01672ce5371d67130dfd21d29 Mon Sep 17 00:00:00 2001
+From: Simon Piriou <spiriou31@gmail.com>
+Date: Wed, 21 Oct 2020 23:20:18 +0200
+Subject: [PATCH 4/4] test fix
+
+---
+ include/uv.h            |  4 ----
+ src/unix/core.c         |  5 ++++-
+ src/unix/nuttx_stream.c | 33 +++++++++++++++++++++------------
+ src/unix/pipe.c         | 31 ++++++++++---------------------
+ 4 files changed, 35 insertions(+), 38 deletions(-)
+
+diff --git a/include/uv.h b/include/uv.h
+index 85b1964f3..d025e8a0b 100644
+--- a/include/uv.h
++++ b/include/uv.h
+@@ -829,11 +829,7 @@ struct uv_pipe_s {
+ UV_EXTERN int uv_pipe_init(uv_loop_t*, uv_pipe_t* handle, int ipc);
+ UV_EXTERN int uv_pipe_open(uv_pipe_t*, uv_file file);
+ UV_EXTERN int uv_pipe_bind(uv_pipe_t* handle, const char* name);
+-#ifdef __NUTTX__
+-UV_EXTERN int uv_pipe_connect(uv_connect_t* req,
+-#else
+ UV_EXTERN void uv_pipe_connect(uv_connect_t* req,
+-#endif
+                                uv_pipe_t* handle,
+                                const char* name,
+                                uv_connect_cb cb);
+diff --git a/src/unix/core.c b/src/unix/core.c
+index d74ed94dd..237a6b1bb 100644
+--- a/src/unix/core.c
++++ b/src/unix/core.c
+@@ -339,6 +339,8 @@ static void uv__finish_close(uv_handle_t* handle) {
+       }
+       break;
+ #endif
++
++#ifdef CONFIG_LIBUV_STREAM
+ #ifdef CONFIG_LIBUV_PIPE
+     case UV_NAMED_PIPE:
+ #endif
+@@ -347,9 +349,10 @@ static void uv__finish_close(uv_handle_t* handle) {
+ #endif
+ #ifdef CONFIG_LIBUV_TCP
+     case UV_TCP:
++#endif
+       uv__stream_destroy((uv_stream_t*)handle);
+       break;
+-#endif
++#endif /* CONFIG_LIBUV_STREAM */
+ #ifdef CONFIG_LIBUV_UDP
+     case UV_UDP:
+       uv__udp_finish_close((uv_udp_t*)handle);
+diff --git a/src/unix/nuttx_stream.c b/src/unix/nuttx_stream.c
+index b9c6b8ada..3c526edac 100644
+--- a/src/unix/nuttx_stream.c
++++ b/src/unix/nuttx_stream.c
+@@ -158,7 +158,7 @@ void uv__stream_destroy(uv_stream_t* stream) {
+ # define UV_DEC_BACKLOG(w) /* no-op */
+ #endif /* defined(UV_HAVE_KQUEUE) */
+ 
+-
++#ifdef CONFIG_LIBUV_NET
+ void uv__server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+   uv_stream_t* stream;
+   int err;
+@@ -206,7 +206,7 @@ void uv__server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+ #endif
+   }
+ }
+-
++#endif
+ 
+ #undef UV_DEC_BACKLOG
+ 
+@@ -261,7 +261,7 @@ done:
+   return err;
+ }
+ 
+-
++#ifdef CONFIG_LIBUV_NET
+ int uv_listen(uv_stream_t* stream, int backlog, uv_connection_cb cb) {
+   int err;
+ 
+@@ -286,7 +286,7 @@ int uv_listen(uv_stream_t* stream, int backlog, uv_connection_cb cb) {
+ 
+   return err;
+ }
+-
++#endif
+ 
+ static void uv__drain(uv_stream_t* stream) {
+   uv_shutdown_t* req;
+@@ -307,9 +307,12 @@ static void uv__drain(uv_stream_t* stream) {
+     uv__req_unregister(stream->loop, req);
+ 
+     err = 0;
++
++    /* TODO switch on stream type */
++#ifdef CONFIG_LIBUV_TCP
+     if (shutdown(uv__stream_fd(stream), SHUT_WR))
+       err = UV__ERR(errno);
+-
++#endif
+     if (err == 0)
+       stream->flags |= UV_HANDLE_SHUT;
+ 
+@@ -517,7 +520,7 @@ static void uv__write_callbacks(uv_stream_t* stream) {
+   }
+ }
+ 
+-
++#ifdef CONFIG_LIBUV_NET
+ uv_handle_type uv__handle_type(int fd) {
+   struct sockaddr_storage ss;
+   socklen_t sslen;
+@@ -559,7 +562,7 @@ uv_handle_type uv__handle_type(int fd) {
+ 
+   return UV_UNKNOWN_HANDLE;
+ }
+-
++#endif
+ 
+ static void uv__stream_eof(uv_stream_t* stream, const uv_buf_t* buf) {
+   stream->flags |= UV_HANDLE_READ_EOF;
+@@ -677,15 +680,21 @@ static void uv__stream_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+ 
+   stream = container_of(w, uv_stream_t, io_watcher);
+ 
+-  assert(stream->type == UV_TCP ||
+-         stream->type == UV_NAMED_PIPE ||
+-         stream->type == UV_TTY);
++  assert(
++#ifdef CONFIG_LIBUV_NET
++    stream->type == UV_TCP ||
++#endif
++    stream->type == UV_NAMED_PIPE
++    // || stream->type == UV_TTY
++    );
+   assert(!(stream->flags & UV_HANDLE_CLOSING));
+ 
++#ifdef CONFIG_LIBUV_NET
+   if (stream->connect_req) {
+     uv__stream_connect(stream);
+     return;
+   }
++#endif
+ 
+   assert(uv__stream_fd(stream) >= 0);
+ 
+@@ -723,7 +732,7 @@ static void uv__stream_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+   }
+ }
+ 
+-
++#ifdef CONFIG_LIBUV_NET
+ /**
+  * We get called here from directly following a call to connect(2).
+  * In order to determine if we've errored out or succeeded must call
+@@ -767,7 +776,7 @@ static void uv__stream_connect(uv_stream_t* stream) {
+     uv__write_callbacks(stream);
+   }
+ }
+-
++#endif
+ 
+ int uv_write2(uv_write_t* req,
+               uv_stream_t* stream,
+diff --git a/src/unix/pipe.c b/src/unix/pipe.c
+index 292354455..7d6105083 100644
+--- a/src/unix/pipe.c
++++ b/src/unix/pipe.c
+@@ -39,7 +39,8 @@ int uv_pipe_init(uv_loop_t* loop, uv_pipe_t* handle, int ipc) {
+   return 0;
+ }
+ 
+-
++// #ifdef CONFIG_LIBUV_NET
++#if 0
+ int uv_pipe_bind(uv_pipe_t* handle, const char* name) {
+   struct sockaddr_un saddr;
+   const char* pipe_fname;
+@@ -115,7 +116,7 @@ int uv_pipe_listen(uv_pipe_t* handle, int backlog, uv_connection_cb cb) {
+   uv__io_start(handle->loop, &handle->io_watcher, POLLIN);
+   return 0;
+ }
+-
++#endif
+ 
+ void uv__pipe_close(uv_pipe_t* handle) {
+   if (handle->pipe_fname) {
+@@ -169,11 +170,9 @@ int uv_pipe_open(uv_pipe_t* handle, uv_file fd) {
+   return uv__stream_open((uv_stream_t*)handle, fd, flags);
+ }
+ 
+-#ifdef __NUTTX__
+-int uv_pipe_connect(uv_connect_t* req,
+-#else
++// #ifdef CONFIG_LIBUV_NET
++#if 0
+ void uv_pipe_connect(uv_connect_t* req,
+-#endif
+                     uv_pipe_t* handle,
+                     const char* name,
+                     uv_connect_cb cb) {
+@@ -201,13 +200,10 @@ void uv_pipe_connect(uv_connect_t* req,
+   }
+   while (r == -1 && errno == EINTR);
+ 
+-#ifdef __NUTTX__
+-  if (r < 0) {
+-    /* FIXME NuttX does not support NONBLOCKING connect,
+-     * no need to check for EINPROGRESS.
+-     */
+-    err = UV__ERR(errno);
+-#else
++  /* FIXME NuttX does not support NONBLOCKING connect,
++   * no need to check for EINPROGRESS.
++   */
++
+   if (r == -1 && errno != EINPROGRESS) {
+     err = UV__ERR(errno);
+ #if defined(__CYGWIN__) || defined(__MSYS__)
+@@ -218,7 +214,6 @@ void uv_pipe_connect(uv_connect_t* req,
+     if (err == UV_EBADF)
+       err = UV_ENOTSOCK;
+ #endif
+-#endif /* __NUTTX__ */
+     goto out;
+   }
+ 
+@@ -233,13 +228,7 @@ void uv_pipe_connect(uv_connect_t* req,
+     uv__io_start(handle->loop, &handle->io_watcher, POLLOUT);
+ 
+ out:
+-#ifdef __NUTTX__
+-  if (err) {
+-    return err;
+-  }
+-#else
+   handle->delayed_error = err;
+-#endif
+   handle->connect_req = req;
+ 
+   uv__req_init(handle->loop, req, UV_CONNECT);
+@@ -300,7 +289,6 @@ static int uv__pipe_getsockpeername(const uv_pipe_t* handle,
+   return 0;
+ }
+ 
+-
+ int uv_pipe_getsockname(const uv_pipe_t* handle, char* buffer, size_t* size) {
+   return uv__pipe_getsockpeername(handle, getsockname, buffer, size);
+ }
+@@ -309,6 +297,7 @@ int uv_pipe_getsockname(const uv_pipe_t* handle, char* buffer, size_t* size) {
+ int uv_pipe_getpeername(const uv_pipe_t* handle, char* buffer, size_t* size) {
+   return uv__pipe_getsockpeername(handle, getpeername, buffer, size);
+ }
++#endif
+ 
+ #if 0
+ void uv_pipe_pending_instances(uv_pipe_t* handle, int count) {
+-- 
+2.17.1
+

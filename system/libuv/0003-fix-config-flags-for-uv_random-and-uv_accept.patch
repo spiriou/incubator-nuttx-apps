@@ -1,7 +1,7 @@
 From 914dcfdb968bb68849e059c242ea1f68e85866ad Mon Sep 17 00:00:00 2001
 From: Simon Piriou <spiriou31@gmail.com>
 Date: Wed, 30 Sep 2020 17:05:40 +0200
-Subject: [PATCH 3/3] fix config flags for uv_random() and uv_accept()
+Subject: [PATCH 3/4] fix config flags for uv_random() and uv_accept()
 
 ---
  src/random.c    | 38 ++++++++++++++++++++------------------
